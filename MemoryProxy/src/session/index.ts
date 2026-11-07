@@ -102,6 +102,7 @@ export type SessionInitResult = CBSessionInitResult;
  */
 import type { MetadataClient } from "../meta/client.js";
 import type { PresetIdentity } from "./preset.js";
+import { isTraeFamilyAgent } from "./preset.js";
 
 export async function handleSessionInit(
   sessionKey: string,
@@ -154,11 +155,15 @@ export async function handleSessionInit(
   // OpenAI chat/completions SSE tool_calls 传输（WB 客户端是 CC tool 语义 +
   // OpenAI 协议的混合体，抓包 [wb-ask-user-schema] 已实证）。
   //
+  // Trae / Trae CN / Doubao 同属这一类：都按 OpenAI chat/completions 接入，且
+  // 客户端内核支持 `AskUserQuestion` 交互卡片（Trae CN workbench bundle 实证），
+  // 因此走完全相同的"CB 状态机 + 外层重渲染"路线。
+  //
   // 参照 codex 的模式（`session/codex/form.ts::buildFormResponse`），这里在 CB
   // 状态机产出 formData 后**外层重渲染**：丢掉 result.response（CB 的
   // ask_followup_question SSE），改用 workbuddy/form.ts 生成 AskUserQuestion SSE。
   // 好处：CB 状态机代码零改动，10 处 intercepted 站点无需逐个分派。
-  if (agentSource === "workbuddy" && result.intercepted && result.formData) {
+  if ((agentSource === "workbuddy" || isTraeFamilyAgent(agentSource)) && result.intercepted && result.formData) {
     const cbFd = result.formData;
     const wbFd: WBFormData = {
       teams: cbFd.teams,

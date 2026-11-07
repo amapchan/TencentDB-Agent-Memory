@@ -23,7 +23,7 @@ import { SessionStore } from "../store.js";
 import { buildSessionInfo } from "../registrar.js";
 import { injectSessionContextWithToggles } from "../context-injector.js";
 import type { MetadataClient } from "../../meta/client.js";
-import { isHeaderOnlyAgent, resolvePresetIdentity, type PresetIdentity } from "../preset.js";
+import { isHeaderOnlyAgent, isTraeFamilyAgent, resolvePresetIdentity, type PresetIdentity } from "../preset.js";
 import {
   resolveUserSessionDefault,
   describeUserDefaultFallback,
@@ -649,6 +649,16 @@ async function handleSessionInitInner(
   // gate/MORE 识别；空 input 首帧不需要，但依然按 codex 语义走后续 stage 拆分。
   const codexInput = reqCtx.codexAnswerInput;
   const isCodexClient = agentSource === "codex";
+  /**
+   * 表单/分页语义对齐 WorkBuddy 的客户端：WorkBuddy 本体 + Trae 系
+   * （trae / trae-cn / doubao）。它们都用 CC 的 `AskUserQuestion` shape
+   * （workbuddy/form.ts 渲染），AskUserQuestion 单题最多 4 option，因此必须：
+   *   - 拆 stage（agent_select → task_select，不走 CB 老一发同问）
+   *   - 支持 `更多 →` 翻页拦截
+   * 文字模式（capabilities.askUserQuestion=false）也复用 WorkBuddy 的
+   * text-form / text-preprocess，其 stage 映射同样只支持拆分后的 stage。
+   */
+  const isAskQuestionFormClient = agentSource === "workbuddy" || isTraeFamilyAgent(agentSource);
   const isCodexSource = isCodexClient && Array.isArray(codexInput);
 
   // A. Default 模式 gate —— codex 客户端拦截了 request_user_input 并回填了
@@ -1067,8 +1077,8 @@ async function handleSessionInitInner(
         //
         // opencode 说明：opencode 客户端原生 `question` tool 每次只能弹一个题，
         // 无法承载"同时问 agent+task"的语义，必须拆 stage（同 codex/wb/dsh）。
-        const nextStatus = (isCodexClient || agentSource === "workbuddy" || agentSource === "dsh" || agentSource === "opencode") ? "pending_agent_select" : "pending_agent_task";
-        const nextStage: FormData["stage"] = (isCodexClient || agentSource === "workbuddy" || agentSource === "dsh" || agentSource === "opencode") ? "agent_select" : "agent_task";
+        const nextStatus = (isCodexClient || isAskQuestionFormClient || agentSource === "dsh" || agentSource === "opencode") ? "pending_agent_select" : "pending_agent_task";
+        const nextStage: FormData["stage"] = (isCodexClient || isAskQuestionFormClient || agentSource === "dsh" || agentSource === "opencode") ? "agent_select" : "agent_task";
         await store.set(compositeKey, {
           status: nextStatus,
           keyId: sessionKey,
@@ -1152,7 +1162,7 @@ async function handleSessionInitInner(
           return { intercepted: true, response: buildFormResponse(fd), formData: fd };
         }
         // ≥2 agents
-        const useSplitStage = isCodexClient || agentSource === "workbuddy" || agentSource === "dsh" || agentSource === "opencode";
+        const useSplitStage = isCodexClient || isAskQuestionFormClient || agentSource === "dsh" || agentSource === "opencode";
         const nextStatus = useSplitStage ? "pending_agent_select" : "pending_agent_task";
         const nextStage: FormData["stage"] = useSplitStage ? "agent_select" : "agent_task";
         await store.set(compositeKey, {
@@ -1410,7 +1420,7 @@ async function handleSessionInitInner(
         // codex 分支，避免落到 legacy agent_task stage 后 form 里只问 agent
         // 却按老语义处理的语义歧义。opencode 原生 `question` tool 每次只能弹
         // 一个题，也必须走 split stage。
-        const useSplitStage = isCodexClient || agentSource === "workbuddy" || agentSource === "dsh" || agentSource === "opencode";
+        const useSplitStage = isCodexClient || isAskQuestionFormClient || agentSource === "dsh" || agentSource === "opencode";
         const nextStatus = useSplitStage ? "pending_agent_select" : "pending_agent_task";
         const nextStage: FormData["stage"] = useSplitStage ? "agent_select" : "agent_task";
         await store.set(compositeKey, {
@@ -1510,7 +1520,7 @@ async function handleSessionInitInner(
     // 重渲染分支按 stage 从 codexPageIndex.teamPage 挑出，传给 WB/OC form 的
     // pageIndex）。dsh 客户端无 options 上限，team 不分页，即使误触也无害。
     // 2026-09-03 新增，对齐 agent_select / task_select 分支的姿势。
-    if (agentSource === "workbuddy" || agentSource === "opencode" || agentSource === "dsh") {
+    if (isAskQuestionFormClient || agentSource === "opencode" || agentSource === "dsh") {
       const curTeamPage = state.codexPageIndex?.teamPage ?? 0;
       const nextTeamPage = detectWorkbuddyMorePage(lastUserText, curTeamPage, cachedTeamsForMore.length);
       if (nextTeamPage !== null) {
@@ -1560,7 +1570,7 @@ async function handleSessionInitInner(
 
     if (teamId && teamId !== BYPASS_MARKER) {
       const useSplitStage = isCodexClient
-        || agentSource === "workbuddy"
+        || isAskQuestionFormClient
         || agentSource === "dsh"
         || agentSource === "opencode";
 
@@ -1753,7 +1763,7 @@ async function handleSessionInitInner(
     // 无限重发第 1 页。命中则 bump agentPage 并重发 agent_select form（页码经
     // session/index.ts 的 workbuddy/opencode 重渲染分支按 stage 从 codexPageIndex.agentPage 挑出）。
     // opencode 与 workbuddy 共用 `更多 →` MORE_LABEL 与分页语义，一并拦截。
-    if (agentSource === "workbuddy" || agentSource === "opencode") {
+    if (isAskQuestionFormClient || agentSource === "opencode") {
       const curAgentPage = state.codexPageIndex?.agentPage ?? 0;
       const nextAgentPage = detectWorkbuddyMorePage(lastUserText, curAgentPage, team.agents.length);
       if (nextAgentPage !== null) {
@@ -1907,7 +1917,7 @@ async function handleSessionInitInner(
     // 同 pending_agent_select：extractTaskOnly 不识别 "更多 →"，必须先拦截。命中则
     // bump taskPage 并重发 task_select form（页码经 session/index.ts 的 workbuddy/opencode
     // 重渲染分支按 stage 从 codexPageIndex.taskPage 挑出）。
-    if (agentSource === "workbuddy" || agentSource === "opencode") {
+    if (isAskQuestionFormClient || agentSource === "opencode") {
       const curTaskPage = state.codexPageIndex?.taskPage ?? 0;
       const nextTaskPage = detectWorkbuddyMorePage(lastUserText, curTaskPage, team.tasks.length);
       if (nextTaskPage !== null) {

@@ -16,33 +16,57 @@ import type { SessionInitConfig } from "../types.js";
 import type { TeamOption } from "./types.js";
 
 /**
- * Agents whose identity is driven ENTIRELY by request headers
- * (`x-team-id` / `x-agent-id` / `x-task-id`) and which have **no interactive
- * form UI** to fall back on:
+ * Agents with **no interactive form UI at all** — identity comes ONLY from
+ * request headers (`x-team-id` / `x-agent-id` / `x-task-id`):
  *
  *   - `pi`       — openai-chat, no `ask_followup_question` tool in body.tools
  *   - `hermes`   — anthropic, no ask-user tool available
  *   - `openclaw` — anthropic, same as hermes
- *   - `trae` / `trae-cn` / `doubao` — openai-chat, 未抓包不猜测 ask-user tool 名,
- *     身份只能靠 header 预选
  *
  * For these clients, `handleSessionInit` MUST NOT emit a fake tool_call form
  * on preset failure/mismatch — the client renders unknown tool_use as an
  * error. See `session/codebuddy/init.ts` header-preselect branch and the
  * `mem:session-reset` pre-hooks in `handler.ts` / `anthropicHandler.ts`.
+ *
+ * NOTE(trae family): `trae` / `trae-cn` / `doubao` used to live here because no
+ * packet capture existed. Evidence (Trae CN workbench bundle) shows the client
+ * DOES render `AskUserQuestion` interaction cards (`INTERACTION_TOOL_NAMES`
+ * includes it, `buildInteractionFromPlanItem` maps `params.questions`), and its
+ * `AI.agent.v2.ide.proactiveQuestioning` setting defaults to true. So they are
+ * now form-capable (card when `body.tools` declares AskUserQuestion, plain-text
+ * form otherwise) — see TRAE_FAMILY_AGENTS below.
  */
 export const HEADER_ONLY_AGENTS: ReadonlySet<string> = new Set([
   "hermes",
   "openclaw",
   "pi",
-  "trae",
-  "trae-cn",
-  "doubao",
 ]);
 
 /** True when the agent has no interactive form UI to fall back on. */
 export function isHeaderOnlyAgent(agentSource: string | undefined | null): boolean {
   return !!agentSource && HEADER_ONLY_AGENTS.has(agentSource);
+}
+
+/**
+ * Trae 系客户端（Trae / Trae CN / Doubao）。
+ *
+ * 与 pi/hermes/openclaw 的区别：它们**有**交互表单能力，只是载体工具存在
+ * 时才可用 —— `AskUserQuestion`（客户端 plan-item 交互卡片）在
+ * `body.tools` 里声明时走卡片，未声明时降级为纯文字表单
+ * （`session/workbuddy/text-form.ts`）。
+ *
+ * 另外这些客户端不发会话头（`x-conversation-id` 等），session-init 需要
+ * 允许在 `conversationId` 为空时用 sessionKey（= user_id）作为绑定键。
+ */
+export const TRAE_FAMILY_AGENTS: ReadonlySet<string> = new Set([
+  "trae",
+  "trae-cn",
+  "doubao",
+]);
+
+/** True for Trae / Trae CN / Doubao. */
+export function isTraeFamilyAgent(agentSource: string | undefined | null): boolean {
+  return !!agentSource && TRAE_FAMILY_AGENTS.has(agentSource);
 }
 
 /** Raw identity values parsed from request headers (may be partial / absent). */

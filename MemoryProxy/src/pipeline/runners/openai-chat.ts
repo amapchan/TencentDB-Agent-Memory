@@ -50,6 +50,7 @@ import {
 } from "../../instance-upstream-cache.js";
 import { resolveModelId, isModelInPricing } from "../../pricing.js";
 import { inspectAndRecord } from "../../identity.js";
+import { isTraeFamilyAgent } from "../../session/preset.js";
 import { writeFailedReportRaw } from "../../clickhouse.js";
 import { verifyUserKey } from "../../auth.js";
 import { stageAuth } from "../stages/auth.js";
@@ -709,18 +710,20 @@ export async function runOpenaiChatPipeline(
   // ── Client capabilities detection ─────────────────────────────────────────
   // 探测客户端"能否响应 proxy 发起的 fake ask tool_call"。
   //
-  // 当前仅对 workbuddy 做实质判定：新版 workbuddy 官方 tools 集合里拿掉了
-  // AskUserQuestion（现只剩 20 个工具），proxy 侧继续发 tool_calls 会被客户端
-  // 收下但不知道怎么渲染 → 卡死在 pending。此时需要降级走文字模式
-  // （content chunk + markdown + 纯文字解析）。
+  // 实质判定两个家族：
+  //   - workbuddy：新版官方 tools 集合里拿掉了 AskUserQuestion（现只剩 20 个工具），
+  //     proxy 侧继续发 tool_calls 会被客户端收下但不知道怎么渲染 → 卡死在 pending。
+  //   - trae / trae-cn / doubao：客户端内核支持 AskUserQuestion 交互卡片（Trae CN
+  //     workbench bundle 实证），但只有 body.tools 里声明了才安全发送。
+  // 两者判定为 false 时降级走文字模式（content chunk + markdown + 纯文字解析）。
   //
   // 其他客户端（codebuddy / claude-code / dsh / codex / opencode / hermes /
   // openclaw）一律 askUserQuestion=true，保持既有行为不变。dsh headless 场景走
   // 上面独立的 _dshHeadless bypass 分支，不受本探测影响。
   const { detectClientCapabilities } = await import("../../session/client-capabilities.js");
   const _capabilities = detectClientCapabilities(agentSource, body);
-  if (agentSource === "workbuddy" && !_capabilities.askUserQuestion) {
-    console.log(`[request-classify] session=${sessionKey} agent=workbuddy no-AskUserQuestion tool → text-mode session-init`);
+  if ((agentSource === "workbuddy" || isTraeFamilyAgent(agentSource)) && !_capabilities.askUserQuestion) {
+    console.log(`[request-classify] session=${sessionKey} agent=${agentSource} no-AskUserQuestion tool → text-mode session-init`);
   }
 
   // Instance-level team_memory master switch. Flipping to "0" at Core bypasses
@@ -745,8 +748,11 @@ export async function runOpenaiChatPipeline(
   // ── Session Init (before injection pipeline) ─────────────────────────────
   let sessionInfo: Record<string, unknown> | null | undefined;
   let assetCapabilities: import("../../injection/types.js").AssetCapabilityFlags | undefined;
+  // Trae 系客户端不发会话头，conversationId 恒为 null；此时 session-init 用
+  // sessionKey（= 已校验 user_id）作为绑定键，否则首会话永远不会弹 Team/Agent/Task。
+  const _sessionInitIdentityReady = !!conversationId || isTraeFamilyAgent(agentSource);
   // Team memory off → force the full injection skip too.
-  let injectedSkipped = !conversationId || isAuxiliary || _dshHeadless || !teamMemoryEnabled;
+  let injectedSkipped = !_sessionInitIdentityReady || isAuxiliary || _dshHeadless || !teamMemoryEnabled;
   let sessionJustRegistered = false;
   /**
    * v3.3 user-session-default: 命中账户默认时, 由 session-init 填充的用户可见
@@ -756,7 +762,7 @@ export async function runOpenaiChatPipeline(
   let defaultBindingNotice: string | null = null;
   let _resetFlowResult: { agentName: string; agentIdShort: string; teamName?: string; teamId: string; taskName?: string | null; bypassed?: boolean } | null = null;
   console.log(`[injection-debug] conversationId=${conversationId} sessionKey=${sessionKey} userId=${userId} agentSource=${agentSource} kind=${_requestKind} dshHeadless=${_dshHeadless} sessionInitEnabled=${config.sessionInit?.enabled} injectionEnabled=${config.injection?.enabled} injectors=${JSON.stringify(config.injection?.injectors)} injectedSkipped=${injectedSkipped} spaceId=${spaceId} teamMemoryEnabled=${teamMemoryEnabled}`);
-  if (config.sessionInit?.enabled && conversationId && !isAuxiliary && !_dshHeadless && teamMemoryEnabled) {
+  if (config.sessionInit?.enabled && _sessionInitIdentityReady && !isAuxiliary && !_dshHeadless && teamMemoryEnabled) {
     try {
       // Round 18: session-init 主编排走 shared stageSessionInitOrchestrate;
       // openai-chat 4 个 callback:

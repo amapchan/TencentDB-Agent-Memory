@@ -4,15 +4,17 @@
  * 目的：不同客户端对"proxy 侧发起 fake ask tool_call"的支持情况不同。
  *   - workbuddy 老版本：body.tools 里含 `AskUserQuestion` → 支持卡片表单（tool_calls SSE）
  *   - workbuddy 新版本：body.tools 里**不含** `AskUserQuestion` → 不支持卡片，需降级为纯文字回复
+ *   - trae / trae-cn / doubao：body.tools 里含 `AskUserQuestion` → 卡片表单
+ *     （Trae CN workbench bundle 实证：INTERACTION_TOOL_NAMES 含 AskUserQuestion，
+ *     buildInteractionFromPlanItem 直接读 `params.questions`）。
+ *     未声明该工具 → 降级纯文字表单，避免客户端把未知工具当普通 tool 渲染。
  *   - 其他客户端：本模块不做判定（保持原路径）
  *
  * 判定信号：agentSource + body.tools[]。**每次请求实时算**，不缓存，
  * 所以同一 sessionKey 下次带上 ask 工具会自动切回卡片模式。
- *
- * Scope（当前迭代）：只判定 workbuddy 有没有 `AskUserQuestion` 工具。
- * 其他客户端一律 `askUserQuestion: true`（走原逻辑），避免误伤 dsh / codebuddy /
- * claude-code / codex / opencode / hermes / openclaw 的既有分支。
  */
+
+import { isTraeFamilyAgent } from "./preset.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -69,6 +71,14 @@ export function detectClientCapabilities(
   agentSource: string,
   body: unknown,
 ): ClientCapabilities {
+  const tools = (body as { tools?: unknown } | null | undefined)?.tools;
+
+  // Trae 家族：只在 body.tools 声明了 AskUserQuestion 时才发卡片 tool_call；
+  // 否则走文字表单（CB 状态机会用 text-preprocess 解析 1/2/3、next/prev）。
+  if (isTraeFamilyAgent(agentSource)) {
+    return { askUserQuestion: toolsContain(tools, WB_ASK_TOOL_NAME) };
+  }
+
   // 仅对 workbuddy 做能力判定；其他客户端一律走原路径。
   if (agentSource !== "workbuddy") {
     return { askUserQuestion: true };
@@ -78,7 +88,6 @@ export function detectClientCapabilities(
   // - tools 非数组 / 空数组 / 缺失 → 视为**无能力**（新版 WB 就是这个形态）
   //   这样处理更保守：宁可走文字模式（体验较差但能走通），
   //   也不要走卡片模式（客户端不识别 tool → 卡死）。
-  const tools = (body as { tools?: unknown } | null | undefined)?.tools;
   const hasAskTool = toolsContain(tools, WB_ASK_TOOL_NAME);
   return { askUserQuestion: hasAskTool };
 }
