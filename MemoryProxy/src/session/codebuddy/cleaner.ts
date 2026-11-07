@@ -28,6 +28,15 @@
  *      "questions":[{"id":"team","answer":"Team名 (id尾8位)",...}],
  *      "answers":{"team":"Team名 (id尾8位)"}}}
  *
+ * ── Trae / Trae CN / Doubao 回写格式(openai 分支) ──
+ *
+ * 用户点击 `AskUserQuestion` 交互卡片后,客户端会**重写** proxy 下发的
+ * `call_wb_session_init_<ts>` tool_call id(实测 `call_GIcvaoQdk...`),但答复
+ * 仍是标准 `role: "tool"` 消息,内容为:
+ *   User has answered your questions: "问题描述..."="用户答案"
+ * 由于 id 前缀失效,必须按 wrapper 文本识别,否则每个 stage 都匹配失败 →
+ * 3 次重试后 bypass → sessionInfo=null → L0/skill 全部不写。
+ *
  * ── dsh v0.2+ 回写格式(anthropic 分支) ──
  *
  * dsh v0.2 换 anthropic /v1/messages 协议后,tool_result 载体从 openai 的
@@ -54,6 +63,12 @@ interface AnthropicBlock {
   content?: unknown;
   tool_use_id?: unknown;
 }
+
+/**
+ * 交互问答 tool-result 的通用 wrapper（Trae 系 / opencode 原生 question 工具）。
+ * 用于在 tool_call id 被客户端改写时仍能认出"这是表单答复"。
+ */
+const ASK_ANSWER_WRAPPER_RE = /User has answered your questions:/;
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
@@ -86,6 +101,14 @@ export function getLastUserMessageText(messages: RawMessage[]): string {
     // opencode 的 `call_oc_session_init_`（opencode/form.ts TOOLCALL_PREFIX）。
     const tcid = (messages[i] as any).tool_call_id as string | undefined;
     if (role === "tool" && tcid && /call_(wb_|dsh_|oc_)?session_init_/.test(tcid)) {
+      return text;
+    }
+
+    // Trae / Trae CN / Doubao: 客户端会把 tool_call id 改写掉(id 前缀匹配失效),
+    // 但 AskUserQuestion 的答复始终带 `User has answered your questions:` wrapper。
+    // 该 wrapper 只出现在交互问答 tool-result,且 session-init 挂起期间唯一问答
+    // 来源就是 proxy 下发的表单 —— 按文本识别,不依赖 id。
+    if (ASK_ANSWER_WRAPPER_RE.test(text)) {
       return text;
     }
 
