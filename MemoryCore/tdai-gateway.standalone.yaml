@@ -50,6 +50,15 @@ upstream:
     - agent_source: opencode
       protocol: openai-chat
       display_name: OpenCode
+    - agent_source: trae
+      protocol: openai-chat
+      display_name: Trae
+    - agent_source: trae-cn
+      protocol: openai-chat
+      display_name: Trae CN
+    - agent_source: doubao
+      protocol: openai-chat
+      display_name: Doubao
     - agent_source: pi
       protocol: openai-chat
       display_name: Pi

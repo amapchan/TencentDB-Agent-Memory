@@ -48,6 +48,9 @@ export const DEFAULT_SUPPORTED_AGENTS: SupportedAgent[] = [
   { agent_source: "workbuddy",   protocol: "openai-responses", display_name: "WorkBuddy" },
   { agent_source: "dsh",         protocol: "openai-chat",      display_name: "DeepSeek Harness" },
   { agent_source: "opencode",    protocol: "openai-chat",      display_name: "OpenCode" },
+  { agent_source: "trae",        protocol: "openai-chat",      display_name: "Trae" },
+  { agent_source: "trae-cn",     protocol: "openai-chat",      display_name: "Trae CN" },
+  { agent_source: "doubao",      protocol: "openai-chat",      display_name: "Doubao" },
   // ── header-only 客户端(通过 x-team-id / x-agent-id / x-task-id 请求头预选身份,
   //    没有交互 form UI —— 客户端不认 proxy 伪造的 ask_followup_question tool_call,
   //    preset 失败/mismatch 场景必须 bypass 而非弹 form)。

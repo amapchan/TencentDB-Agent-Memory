@@ -19,6 +19,7 @@ import { workbuddyAdapter } from "./workbuddy.js";
 import { dshAdapter } from "./dsh.js";
 import { opencodeAdapter } from "./opencode.js";
 import { piAdapter } from "./pi.js";
+import { doubaoAdapter, traeAdapter, traeCnAdapter } from "./trae.js";
 import { defaultAdapter } from "./default.js";
 
 export type { AgentAdapter, AgentKind, RequestKind } from "./types.js";
@@ -39,6 +40,12 @@ export function resolveAgentAdapter(agentSource: string): AgentAdapter {
       return opencodeAdapter;
     case "pi":
       return piAdapter;
+    case "trae":
+      return traeAdapter;
+    case "trae-cn":
+      return traeCnAdapter;
+    case "doubao":
+      return doubaoAdapter;
     default:
       return defaultAdapter;
   }

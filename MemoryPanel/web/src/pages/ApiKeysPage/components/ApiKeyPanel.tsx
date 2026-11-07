@@ -329,6 +329,11 @@ export default function ApiKeyPanel() {
                 // OpenAI Chat Completions（POST /v1/chat/completions），与 CB/dsh 同族。
                 // proxy 侧 agent-adapters/opencode.ts 已适配 form 回填 + mem: 命令族全套。
                 { label: 'OpenCode', url: `${base}/opencode/${iid}` },
+                // Trae / Trae CN / Doubao —— 通用 OpenAI Chat Completions 接入，
+                // 身份走 x-team-id / x-agent-id / x-task-id 请求头预选（无交互 form）。
+                { label: 'Trae', url: `${base}/trae/${iid}` },
+                { label: 'Trae CN', url: `${base}/trae-cn/${iid}` },
+                { label: 'Doubao', url: `${base}/doubao/${iid}` },
                 { label: 'OpenClaw', url: `${base}/openclaw/${iid}` },
                 { label: 'Hermes', url: `${base}/hermes/${iid}` },
               ];

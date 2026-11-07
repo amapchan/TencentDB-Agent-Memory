@@ -34,6 +34,11 @@ export function resolveConversationId(c: Context): string | null {
     c.req.header("x-session-id") ??
     c.req.header("x-claude-code-session-id") ?? // Claude Code CLI sends this
     c.req.header("x-deepseek-harness-session-id") ?? // dsh (deepseek-harness) CLI/web sends this
+    // Trae / Trae CN / Doubao —— 未抓包，先覆盖常见命名；缺失时回落下面的通用链
+    c.req.header("x-trae-session-id") ??
+    c.req.header("x-trae-conversation-id") ??
+    c.req.header("x-doubao-session-id") ??
+    c.req.header("x-doubao-conversation-id") ??
     c.req.header("x-chat-id") ??
     c.req.header("x-thread-id") ??
     null;

@@ -31,6 +31,7 @@ export type AgentKind =
   | "claude-code" | "codebuddy" | "codex" | "workbuddy"
   | "dsh" | "opencode" | "pi"
   | "hermes" | "openclaw"
+  | "trae" | "trae-cn" | "doubao"
   | "unknown";
 
 export type RequestKind = "main" | "fork" | "sidequery" | "auxiliary";

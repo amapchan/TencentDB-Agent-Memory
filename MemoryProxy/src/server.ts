@@ -373,6 +373,34 @@ export function createApp(
     app.post("/opencode/:spaceId/analyse/chat/completions", (c) => handleChatCompletions(c, getConfig()));
   }
 
+  // ── Trae / Trae CN / Doubao endpoints ────────────────────────────────────
+  // 三家客户端按通用 OpenAI Chat Completions 接入（仓库内暂无抓包，未做 form；
+  // 身份靠 x-team-id / x-agent-id / x-task-id header 预选）。
+  // 与 CB/dsh/opencode 一致，同时接受 base_url 带 /v1 与不带 /v1 两种写法。
+  // 主端点之外显式注册 marker 路由，避免 5 段路径 fall through 到 catch-all
+  // 导致 cost-guard / analyse marker 静默失效。
+  const OPENAI_CHAT_FAMILY_AGENTS = ["trae", "trae-cn", "doubao"] as const;
+  for (const agent of OPENAI_CHAT_FAMILY_AGENTS) {
+    app.post(`/${agent}/:spaceId/v1/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+    app.post(`/${agent}/:spaceId/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+  }
+  if (config.costGuard.markerOptIn) {
+    for (const agent of OPENAI_CHAT_FAMILY_AGENTS) {
+      app.post(`/${agent}/:spaceId/cost-guard/v1/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+      app.post(`/${agent}/:spaceId/cost-guard/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+      app.post(`/${agent}/:spaceId/cost-guard/pre/v1/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+      app.post(`/${agent}/:spaceId/cost-guard/pre/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+      app.post(`/${agent}/:spaceId/cost-guard/cheap/v1/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+      app.post(`/${agent}/:spaceId/cost-guard/cheap/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+    }
+  }
+  if (config.injection?.assetReflection?.markerOptIn) {
+    for (const agent of OPENAI_CHAT_FAMILY_AGENTS) {
+      app.post(`/${agent}/:spaceId/analyse/v1/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+      app.post(`/${agent}/:spaceId/analyse/chat/completions`, (c) => handleChatCompletions(c, getConfig()));
+    }
+  }
+
   // OpenAI Models API — tenant-scoped and generated locally from the public pricing catalog.
   app.get("/:agent/:spaceId/v1/models", (c) => handleModels(c, getConfig()));
   app.post("/:agent/:spaceId/v1/messages", (c) => handleAnthropicMessages(c, getConfig()));

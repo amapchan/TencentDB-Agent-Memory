@@ -19,6 +19,7 @@ import { opencodeStrategy } from "./opencode.js";
 import { piStrategy } from "./pi.js";
 import { hermesStrategy } from "./hermes.js";
 import { openclawStrategy } from "./openclaw.js";
+import { doubaoStrategy, traeCnStrategy, traeStrategy } from "./trae.js";
 import { defaultStrategy } from "./default.js";
 
 export {
@@ -31,6 +32,9 @@ export {
   piStrategy,
   hermesStrategy,
   openclawStrategy,
+  traeStrategy,
+  traeCnStrategy,
+  doubaoStrategy,
   defaultStrategy,
 };
 
@@ -46,6 +50,10 @@ export function resolveAgentStrategy(agentSource: string): AgentStrategy {
     // header-only 三方 (addendum §4.3) —— 独立实例而非共用, 便于将来单方特化
     case "hermes": return hermesStrategy;
     case "openclaw": return openclawStrategy;
+    // header-only OpenAI Chat 三方（无交互 form，靠 x-team-id 等 header 预选）
+    case "trae": return traeStrategy;
+    case "trae-cn": return traeCnStrategy;
+    case "doubao": return doubaoStrategy;
     default: return defaultStrategy;
   }
 }
